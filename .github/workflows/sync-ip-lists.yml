@@ -1,0 +1,41 @@
+name: Sync IP Blocklists
+
+on:
+  schedule:
+    # Runs every 2 hours to match bitwire-it's update cadence
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-lists:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch and clean IP blocklists
+        run: |
+          # 1. stamparm/ipsum level 3 (strip hit-count column and keep clean IPs)
+          curl -fsSL "https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt" \
+            | grep -Eo '^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' \
+            | sort -Vu > ipsum_level3
+
+          # 2. bitwire-it inbound
+          curl -fsSL "https://raw.githubusercontent.com/bitwire-it/ipblocklist/main/inbound.txt" \
+            | grep -Eo '^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' \
+            | sort -Vu > bitwire_inbound
+
+          # 3. bitwire-it outbound
+          curl -fsSL "https://raw.githubusercontent.com/bitwire-it/ipblocklist/main/outbound.txt" \
+            | grep -Eo '^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' \
+            | sort -Vu > bitwire_outbound
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ipsum_level3 bitwire_inbound bitwire_outbound
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update IP blocklists ($(date -u +'%Y-%m-%d %H:%M UTC'))" && git push)
